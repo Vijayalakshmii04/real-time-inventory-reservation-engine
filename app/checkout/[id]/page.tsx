@@ -37,99 +37,43 @@ export default function CheckoutPage() {
 
   const [loading, setLoading] = useState(true);
 
-  async function loadReservation() {
-    try {
-      const response = await fetch(
-        `/api/reservations/${reservationId}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message);
-        return;
-      }
-
-      setReservation(data);
-
-      const expiryTime = new Date(
-        data.expiresAt
-      ).getTime();
-
-      const now = Date.now();
-
-      const secondsLeft = Math.max(
-        Math.floor((expiryTime - now) / 1000),
-        0
-      );
-
-      setRemainingSeconds(secondsLeft);
-    } catch (error) {
-      toast.error("Unable to load reservation");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function confirmReservation() {
-    try {
-      const response = await fetch(
-        `/api/reservations/${reservationId}/confirm`,
-        {
-          method: "POST",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message);
-        await loadReservation();
-        return;
-      }
-
-      toast.success("Purchase confirmed successfully");
-      await loadReservation();
-    } catch (error) {
-      toast.error("Confirmation request failed");
-    }
-  }
-
-  async function releaseReservation() {
-    try {
-      const response = await fetch(
-        `/api/reservations/${reservationId}/release`,
-        {
-          method: "POST",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message);
-        return;
-      }
-
-      toast.success("Reservation cancelled");
-      router.push("/");
-    } catch (error) {
-      toast.error("Cancellation failed");
-    }
-  }
-
-  /* ✅ FIXED: safer initialization effect */
   useEffect(() => {
     if (!reservationId) return;
 
-    const init = async () => {
-      await loadReservation();
-    };
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/reservations/${reservationId}`
+        );
 
-    init();
+        const data = await response.json();
+
+        if (!response.ok) {
+          toast.error(data.message);
+          return;
+        }
+
+        setReservation(data);
+
+        const expiry =
+          new Date(data.expiresAt).getTime();
+
+        const now = Date.now();
+
+        setRemainingSeconds(
+          Math.max(
+            Math.floor((expiry - now) / 1000),
+            0
+          )
+        );
+      } catch {
+        toast.error("Unable to load reservation");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [reservationId]);
 
-  /* ✅ FIXED: stable countdown timer */
   useEffect(() => {
     if (!reservation || reservation.state !== "ACTIVE") return;
 
@@ -142,104 +86,81 @@ export default function CheckoutPage() {
     return () => clearInterval(timer);
   }, [reservation?.state]);
 
+  async function confirmReservation() {
+    try {
+      const response = await fetch(
+        `/api/reservations/${reservationId}/confirm`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.message);
+        return;
+      }
+
+      toast.success("Purchase confirmed");
+      router.push("/");
+    } catch {
+      toast.error("Confirmation failed");
+    }
+  }
+
+  async function releaseReservation() {
+    try {
+      const response = await fetch(
+        `/api/reservations/${reservationId}/release`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.message);
+        return;
+      }
+
+      toast.success("Reservation cancelled");
+      router.push("/");
+    } catch {
+      toast.error("Cancellation failed");
+    }
+  }
+
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 text-white">
+    <main className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
       <Toaster position="top-right" />
 
       {loading ? (
-        <div className="text-neutral-400">
-          Loading reservation...
-        </div>
+        <p>Loading...</p>
       ) : reservation ? (
-        <div className="w-full max-w-2xl rounded-3xl border border-neutral-800 bg-neutral-900 p-10 shadow-2xl">
-          <div className="mb-8 flex items-start justify-between">
-            <div>
-              <p className="mb-3 text-sm uppercase tracking-[0.3em] text-neutral-500">
-                Reservation Session
-              </p>
+        <div className="p-8 border rounded-xl">
+          <h1>{reservation.stockLedger.catalogItem.title}</h1>
 
-              <h1 className="text-4xl font-black">
-                {reservation.stockLedger.catalogItem.title}
-              </h1>
+          <p>{reservation.state}</p>
 
-              <p className="mt-3 text-neutral-400">
-                {reservation.stockLedger.catalogItem.details}
-              </p>
-            </div>
+          <h2>
+            {reservation.state === "ACTIVE"
+              ? `${String(minutes).padStart(2, "0")}:${String(
+                  seconds
+                ).padStart(2, "0")}`
+              : reservation.state}
+          </h2>
 
-            <div className="rounded-full bg-cyan-500/15 px-5 py-2 text-sm font-semibold text-cyan-400">
-              {reservation.state}
-            </div>
-          </div>
+          <button onClick={confirmReservation}>
+            Confirm
+          </button>
 
-          <div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-950 p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <span className="text-neutral-400">
-                Fulfillment Center
-              </span>
-              <span className="font-semibold">
-                {reservation.stockLedger.fulfillment.name}
-              </span>
-            </div>
-
-            <div className="mb-4 flex items-center justify-between">
-              <span className="text-neutral-400">
-                Region
-              </span>
-              <span className="font-semibold">
-                {reservation.stockLedger.fulfillment.region}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-neutral-400">
-                Reserved Units
-              </span>
-              <span className="font-semibold">
-                {reservation.unitsReserved}
-              </span>
-            </div>
-          </div>
-
-          <div className="mb-8 text-center">
-            <p className="mb-3 text-sm uppercase tracking-[0.3em] text-neutral-500">
-              Reservation Expires In
-            </p>
-
-            <div className="text-6xl font-black text-cyan-400">
-              {reservation.state === "ACTIVE"
-                ? `${String(minutes).padStart(2, "0")}:${String(
-                    seconds
-                  ).padStart(2, "0")}`
-                : reservation.state}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <button
-              onClick={confirmReservation}
-              disabled={reservation.state !== "ACTIVE"}
-              className="rounded-2xl bg-emerald-500 px-6 py-4 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
-            >
-              Confirm Purchase
-            </button>
-
-            <button
-              onClick={releaseReservation}
-              disabled={reservation.state !== "ACTIVE"}
-              className="rounded-2xl border border-red-500 bg-red-500/10 px-6 py-4 font-bold text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-neutral-700 disabled:text-neutral-500"
-            >
-              Cancel Reservation
-            </button>
-          </div>
+          <button onClick={releaseReservation}>
+            Cancel
+          </button>
         </div>
       ) : (
-        <div className="text-neutral-400">
-          Reservation not found
-        </div>
+        <p>Reservation not found</p>
       )}
     </main>
   );
