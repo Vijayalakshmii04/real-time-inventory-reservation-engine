@@ -1,128 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/core/database";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+export async function POST(
+  request: NextRequest
 ) {
 
   try {
 
-    const { id: reservationId } =
-      await params;
+    const body =
+      await request.json();
 
-    let reservation =
-      await database.reservationRecord.findUnique({
-        where: {
-          id: reservationId,
-        },
+    const {
+      stockLedgerId,
+      unitsReserved,
+    } = body;
 
-        include: {
-          stockLedger: {
-
-            include: {
-
-              catalogItem: true,
-
-              fulfillment: true,
-            },
-          },
-        },
-      });
-
-    if (!reservation) {
-
-      return NextResponse.json(
-        {
-          message:
-            "Reservation not found",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    const activeReservation =
-      reservation;
-
-    const hasExpired =
-      activeReservation.state === "ACTIVE" &&
-      new Date() >
-        new Date(
-          activeReservation.expiresAt
-        );
-
-    if (hasExpired) {
-
+    const reservation =
       await database.$transaction(
         async (transaction) => {
 
+          const stockLedger =
+            await transaction.stockLedger.findUnique({
+              where: {
+                id: stockLedgerId,
+              },
+            });
+
+          if (!stockLedger) {
+
+            throw new Error(
+              "Inventory record not found"
+            );
+          }
+
+          const availableUnits =
+            stockLedger.physicalUnits -
+            stockLedger.allocatedUnits;
+
+          if (
+            availableUnits <
+            unitsReserved
+          ) {
+
+            throw new Error(
+              "INSUFFICIENT_STOCK"
+            );
+          }
+
           await transaction.stockLedger.update({
             where: {
-              id:
-                activeReservation.stockLedgerId,
+              id: stockLedgerId,
             },
 
             data: {
               allocatedUnits: {
-                decrement:
-                  activeReservation.unitsReserved,
+                increment:
+                  unitsReserved,
               },
             },
           });
 
-          await transaction.reservationRecord.update({
-            where: {
-              id:
-                activeReservation.id,
-            },
+          const expiresAt =
+            new Date(
+              Date.now() +
+              10 * 60 * 1000
+            );
 
+          return await transaction.reservationRecord.create({
             data: {
-              state: "EXPIRED",
-
-              cancelledAt:
-                new Date(),
+              stockLedgerId,
+              unitsReserved,
+              expiresAt,
             },
           });
         }
       );
 
-      reservation =
-        await database.reservationRecord.findUnique({
-          where: {
-            id: reservationId,
-          },
-
-          include: {
-            stockLedger: {
-
-              include: {
-
-                catalogItem: true,
-
-                fulfillment: true,
-              },
-            },
-          },
-        });
-    }
-
     return NextResponse.json(
-      reservation
+      reservation,
+      {
+        status: 201,
+      }
     );
 
   } catch (error) {
 
     console.error(
-      "Reservation fetch failed:",
+      "Reservation creation failed:",
       error
     );
+
+    if (
+      error instanceof Error &&
+      error.message ===
+        "INSUFFICIENT_STOCK"
+    ) {
+
+      return NextResponse.json(
+        {
+          message:
+            "Insufficient inventory available",
+        },
+        {
+          status: 409,
+        }
+      );
+    }
 
     return NextResponse.json(
       {
         message:
-          "Unable to fetch reservation",
+          "Reservation could not be created",
       },
       {
         status: 500,
