@@ -3,12 +3,21 @@ import prisma from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const items = await prisma.catalogItem.findMany();
-    return NextResponse.json(items);
+    const catalog = await prisma.catalogItem.findMany({
+      include: {
+        inventory: {
+          include: {
+            fulfillmentCenter: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(catalog);
   } catch (error) {
-    console.error("Catalog fetch error:", error);
+    console.error("Catalog error:", error);
     return NextResponse.json(
-      { message: "Server error" },
+      { message: "Failed to fetch catalog" },
       { status: 500 }
     );
   }
