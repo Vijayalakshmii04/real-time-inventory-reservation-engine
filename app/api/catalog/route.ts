@@ -1,31 +1,14 @@
 import { NextResponse } from "next/server";
-import { database } from "@/core/database";
+import prisma from "@/lib/prisma";
 
 export async function GET() {
-
   try {
-
-    const items =
-      await database.catalogItem.findMany({
-        include: {
-          stockLedger: {
-            include: {
-              fulfillment: true,
-            },
-          },
-        },
-      });
-
+    const items = await prisma.catalogItem.findMany();
     return NextResponse.json(items);
-
   } catch (error) {
-
     console.error("Catalog fetch error:", error);
-
     return NextResponse.json(
-      {
-        message: "Failed to load catalog",
-      },
+      { message: "Server error" },
       { status: 500 }
     );
   }
