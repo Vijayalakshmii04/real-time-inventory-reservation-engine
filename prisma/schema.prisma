@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CatalogItem {
+  id          String          @id @default(cuid())
+  title       String
+  details     String?
+  stockLedger StockLedger[]
+  createdAt   DateTime        @default(now())
+}
+
+model FulfillmentCenter {
+  id          String          @id @default(cuid())
+  name        String
+  region      String
+  stockLedger StockLedger[]
+  createdAt   DateTime        @default(now())
+}
+
+model StockLedger {
+  id               String                @id @default(cuid())
+  catalogItemId    String
+  fulfillmentId    String
+
+  physicalUnits    Int
+  allocatedUnits   Int                   @default(0)
+
+  catalogItem      CatalogItem           @relation(fields: [catalogItemId], references: [id])
+  fulfillment      FulfillmentCenter     @relation(fields: [fulfillmentId], references: [id])
+
+  reservations     ReservationRecord[]
+
+  @@unique([catalogItemId, fulfillmentId])
+}
+
+model ReservationRecord {
+  id              String              @id @default(cuid())
+
+  stockLedgerId   String
+  unitsReserved   Int
+
+  state           ReservationState    @default(ACTIVE)
+
+  expiresAt       DateTime
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
+
+  createdAt       DateTime            @default(now())
+
+  stockLedger     StockLedger         @relation(fields: [stockLedgerId], references: [id])
+}
+
+enum ReservationState {
+  ACTIVE
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
